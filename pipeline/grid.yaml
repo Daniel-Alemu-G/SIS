@@ -1,0 +1,18 @@
+crs: EPSG:4326
+pixel_convention: area        # pixel-is-area: value belongs to the whole cell
+cell_size_deg: 0.008333333333333333   # 1/120, about 1 km
+cells_per_degree: 120         # source of truth; cell size derived from this
+origin:                       # top-left corner (outer edge of cell 0,0)
+  lon: 32.9
+  lat: 14.9
+size:
+  cols: 1812
+  rows: 1380                  # 2,500,560 cells
+extent:
+  west: 32.9
+  east: 48.0
+  south: 3.4
+  north: 14.9
+row0: north                   # row 0 is the northern edge
+transform: [0.008333333333333333, 0, 32.9, 0, -0.008333333333333333, 14.9]  # affine a,b,c,d,e,f
+nodata: -9999
