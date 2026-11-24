@@ -131,3 +131,14 @@ class EngineTests(unittest.TestCase):
         factor = next(f for f in report["crops"]["teff"]["factors"] if f["id"] == "rain_reliability")
         self.assertEqual(factor["unit"], "fraction")
         self.assertEqual(factor["shape"], "ramp_down")
+
+    def test_explicitly_skipped_ph_row_does_not_reactivate_generic_ph(self):
+        requirements = {name: {key: row for key, row in rows.items() if key != "ph"} for name, rows in self.config.requirements.items()}
+        skipped = tuple({"kind": "crop_factor", "crop": crop.crop, "factor": "ph", "reason": "TBD row"} for crop in self.config.crops)
+        engine = ScoringEngine(replace(self.config, requirements=requirements, skipped=skipped), self.calibration)
+        self.assertNotIn("ph", engine.crop_rules(self.config.crops[0])[0])
+
+    def test_absent_ph_row_still_uses_approved_generic_ph(self):
+        requirements = {name: {key: row for key, row in rows.items() if key != "ph"} for name, rows in self.config.requirements.items()}
+        engine = ScoringEngine(replace(self.config, requirements=requirements), self.calibration)
+        self.assertEqual(engine.crop_rules(self.config.crops[0])[0]["ph"], self.config.soil_factors[0])

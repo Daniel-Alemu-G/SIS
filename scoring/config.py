@@ -12,7 +12,7 @@ import hashlib
 import json
 import math
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
 import numpy as np
@@ -63,6 +63,8 @@ def _number(value, name: str) -> float:
 
 
 def _bounded(value, name: str, low: float, high: float, *, include_low=True) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ConfigurationError(f"{name}: expected a numeric YAML value")
     number = _number(value, name)
     if not ((number >= low if include_low else number > low) and number <= high):
         raise ConfigurationError(f"{name}: outside permitted range")
@@ -147,7 +149,7 @@ class ScoringConfig:
                 "crops": [asdict(crop) for crop in self.crops],
                 "requirements": {crop: {name: factor.metadata() for name, factor in rows.items()}
                                  for crop, rows in self.requirements.items()},
-                "skipped": list(self.skipped), "inputs": self.inputs}
+                "band_units": self.band_units, "skipped": list(self.skipped), "inputs": self.inputs}
 
 
 def validate_params(params: dict) -> dict:
@@ -192,9 +194,7 @@ def validate_params(params: dict) -> dict:
     reliability = params["rainfall_reliability"]
     if reliability["method"] not in {"normal_fraction_of_mean", "cv"}:
         raise ConfigurationError("unknown rainfall reliability method")
-    _number(reliability["threshold_ratio"], "threshold_ratio")
-    if float(reliability["threshold_ratio"]) < 0:
-        raise ConfigurationError("threshold_ratio must be nonnegative")
+    _bounded(reliability["threshold_ratio"], "threshold_ratio", 0, math.inf)
     aliases = params["crop_factor_aliases"]
     if any(key not in {"temperature", "temprature"} or value != "temperature_season_c" for key, value in aliases.items()):
         raise ConfigurationError("unknown or ambiguous crop factor alias")
@@ -368,3 +368,131 @@ def load_config(*, soil_path: Path, crops_path: Path, requirements_path: Path, p
         computed.append(crop)
     inputs = {key: {"file": str(path), "sha256": sha256(path)} for key, path in paths.items()}
     return ScoringConfig(tuple(factors), tuple(computed), requirements, params, units, tuple(skipped), inputs)
+
+
+def from_metadata(metadata: dict, manifest: dict) -> ScoringConfig:
+    """Restore the frozen build configuration without reading mutable CSVs.
+
+    A future point report uses this snapshot and the manifest's CV calibration,
+    not newly edited thresholds. File hashes remain provenance, not defaults.
+    """
+    expected = {"params", "soil_factors", "crops", "requirements", "band_units", "skipped", "inputs"}
+    if not isinstance(metadata, dict) or set(metadata) != expected:
+        raise ConfigurationError("frozen configuration has missing or unknown sections")
+    params = validate_params(metadata["params"])
+    units = metadata["band_units"]
+    records = manifest.get("bands", [])
+    manifest_units = {row["name"]: canonical_unit(row["unit"]) for row in records}
+    if not isinstance(units, dict) or any(name not in manifest_units or unit != manifest_units[name] for name, unit in units.items()):
+        raise ConfigurationError("frozen band units differ from the manifest")
+    for name, unit in {"ethiopia_mask": "0 or 1", "landcover": "class code", "es_confidence": "fraction",
+                       "kiremt_mean_mm": "mm", "belg_mean_mm": "mm", "kiremt_cv": "fraction", "belg_cv": "fraction"}.items():
+        if units.get(name) != unit:
+            raise ConfigurationError(f"frozen configuration lacks correctly labelled {name}")
+
+    def restore_rule(record: dict) -> Factor:
+        if not isinstance(record, dict) or set(record) != {item.name for item in fields(Factor)}:
+            raise ConfigurationError("frozen factor has missing or unknown fields")
+        for key in (item.name for item in fields(Factor) if item.name not in {"a", "b", "c", "d"}):
+            if not isinstance(record[key], str):
+                raise ConfigurationError(f"frozen factor {key} must be text")
+        row = {**record, "factor": record["csv_factor"],
+               "c": "" if record["c"] is None else record["c"],
+               "d": "" if record["d"] is None else record["d"]}
+        # The CSV checker expects text, while the frozen parameters are numbers.
+        unresolved = {key: str(value) for key, value in row.items()}
+        reason = _unresolved(unresolved)
+        if reason:
+            raise ConfigurationError(f"frozen {record['factor']}: {reason}")
+        restored = _factor(row, record["factor"], band=record["band"], detailed_band=record["detailed_band"])
+        if restored.metadata() != record:
+            raise ConfigurationError("frozen factor cannot be restored without alteration")
+        return restored
+
+    if not isinstance(metadata["soil_factors"], list) or not isinstance(metadata["crops"], list):
+        raise ConfigurationError("frozen factors and crops must be lists")
+    soil_factors = tuple(restore_rule(row) for row in metadata["soil_factors"])
+    names = [rule.factor for rule in soil_factors]
+    if len(names) != len(set(names)) or not set(names) <= set(params["active_soil_factors"]):
+        raise ConfigurationError("frozen soil factors conflict with activation policy")
+    for rule in soil_factors:
+        if rule.factor not in SOIL_BINDINGS or rule.csv_factor != rule.factor or bool(rule.band) == bool(rule.detailed_band) or rule.input_band != SOIL_BINDINGS[rule.factor]:
+            raise ConfigurationError("frozen soil factor has an invalid band binding")
+        if canonical_unit(rule.unit) != units.get(rule.input_band):
+            raise ConfigurationError("frozen soil threshold units differ from input units")
+        confirmed = params["confirmed_units"].get(rule.factor, rule.unit)
+        if canonical_unit(confirmed) != units[rule.input_band]:
+            raise ConfigurationError("frozen soil units conflict with owner confirmation")
+        if ("unconfirmed" in rule.notes.lower() or "recommend not scoring" in rule.notes.lower() or "skip in" in rule.notes.lower()) and rule.factor not in params["confirmed_units"]:
+            raise ConfigurationError("frozen soil factor retains an unconfirmed activation note")
+    if "slope" not in names or not any(rule.band for rule in soil_factors):
+        raise ConfigurationError("frozen configuration requires basic factors and slope")
+    crops = []
+    previous_index = 0
+    for row in metadata["crops"]:
+        if not isinstance(row, dict) or set(row) != {"crop", "display_name", "seasons", "index"}:
+            raise ConfigurationError("invalid frozen crop record")
+        if not isinstance(row["crop"], str) or not re.fullmatch(r"[a-z][a-z0-9_]*", row["crop"]) or any(crop.crop == row["crop"] for crop in crops):
+            raise ConfigurationError("invalid or duplicate frozen crop ID")
+        if not isinstance(row["display_name"], str) or not row["display_name"].strip() or type(row["index"]) is not int or not previous_index < row["index"] < 255:
+            raise ConfigurationError("frozen crop indices must preserve increasing CSV order")
+        seasons = row["seasons"]
+        if not isinstance(seasons, (list, tuple)) or not seasons or any(season not in SEASONS for season in seasons) or len(seasons) != len(set(seasons)):
+            raise ConfigurationError("invalid frozen crop seasons")
+        crops.append(Crop(row["crop"], row["display_name"], tuple(seasons), row["index"]))
+        previous_index = row["index"]
+    if not isinstance(metadata["requirements"], dict) or not {crop.crop for crop in crops} <= set(metadata["requirements"]):
+        raise ConfigurationError("frozen crop requirements are incomplete")
+    requirements = {}
+    generic = {rule.factor: rule for rule in soil_factors}
+    for crop_name, rows in metadata["requirements"].items():
+        if not isinstance(rows, dict):
+            raise ConfigurationError("frozen crop requirements must be mappings")
+        requirements[crop_name] = {}
+        for name, row in rows.items():
+            rule = restore_rule(row)
+            if name != rule.factor or params["crop_factor_aliases"].get(rule.csv_factor, rule.csv_factor) != name:
+                raise ConfigurationError("frozen crop factor alias or key is inconsistent")
+            if name == "rain_reliability":
+                compatible = (canonical_unit(rule.unit) == "%" and rule.shape == "ramp_up" and params["rainfall_reliability"]["method"] == "normal_fraction_of_mean") or (canonical_unit(rule.unit) == "fraction" and rule.shape == "ramp_down")
+                expected_band = "<season>_cv"
+                if not compatible:
+                    raise ConfigurationError("frozen reliability representation is incompatible")
+            elif name in {"rain_season_mm", "temperature_season_c", "elevation_m", "clay_pct", "ph"}:
+                expected_band = {"rain_season_mm": "<season>_mean_mm", "temperature_season_c": "tmean_<season>_c",
+                                 "elevation_m": "elevation_m", "clay_pct": "sg_clay", "ph": "sg_phh2o"}[name]
+            else:
+                template = generic.get("slope" if name == "slope_deg" else name)
+                if template is None or name == "coarse_fragments":
+                    raise ConfigurationError("unknown or inactive frozen additional factor")
+                expected_band = template.input_band
+            if rule.input_band != expected_band or bool(rule.band) == bool(rule.detailed_band):
+                raise ConfigurationError("invalid frozen crop band binding")
+            expected_detailed = name not in GATE_ORDER and bool(generic.get("slope" if name == "slope_deg" else name).detailed_band)
+            if bool(rule.detailed_band) != expected_detailed:
+                raise ConfigurationError("invalid frozen crop factor tier")
+            if name != "rain_reliability":
+                check = [expected_band.replace("<season>", season) for season in SEASONS] if "<season>" in expected_band else [expected_band]
+                if any(units.get(band) != canonical_unit(rule.unit) for band in check):
+                    raise ConfigurationError("frozen crop units differ from input units")
+            requirements[crop_name][name] = rule
+    if any(not {"elevation_m", "rain_season_mm"} <= set(requirements[crop.crop]) for crop in crops):
+        raise ConfigurationError("computed frozen crop lacks a mandatory gate")
+    skipped = metadata["skipped"]
+    if not isinstance(skipped, list) or any(not isinstance(row, dict) or row.get("kind") not in {"soil_factor", "crop_factor", "crop"} or not isinstance(row.get("reason"), str) or not row["reason"].strip() for row in skipped):
+        raise ConfigurationError("invalid frozen skipped-rule report")
+    skip_keys = {"soil_factor": {"kind", "factor", "reason"}, "crop_factor": {"kind", "crop", "factor", "reason"},
+                 "crop": {"kind", "crop", "reason"}}
+    if any(set(row) != skip_keys[row["kind"]] or any(not isinstance(value, str) or not value for value in row.values()) for row in skipped):
+        raise ConfigurationError("invalid frozen skipped-rule fields")
+    if any(row["factor"] not in SOIL_BINDINGS for row in skipped if row["kind"] == "soil_factor"):
+        raise ConfigurationError("unknown frozen skipped soil factor")
+    recorded_soil_skips = {row.get("factor") for row in skipped if row["kind"] == "soil_factor"}
+    if ((set(params["active_soil_factors"]) - set(names)) | set(params["skipped_soil_factors"])) - recorded_soil_skips:
+        raise ConfigurationError("frozen configuration omits a soil rule without reporting it")
+    inputs = metadata["inputs"]
+    if not isinstance(inputs, dict) or set(inputs) != {"soil_thresholds", "crops", "crop_requirements", "params"}:
+        raise ConfigurationError("frozen configuration requires all four input fingerprints")
+    if any(not isinstance(row, dict) or set(row) != {"file", "sha256"} or not isinstance(row["file"], str) or not row["file"] or not isinstance(row["sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", row["sha256"]) for row in inputs.values()):
+        raise ConfigurationError("invalid frozen input fingerprint")
+    return ScoringConfig(soil_factors, tuple(crops), requirements, params, dict(units), tuple(skipped), inputs)

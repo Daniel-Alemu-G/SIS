@@ -111,6 +111,17 @@ def calibrate_drought(kiremt_mean, belg_mean, kiremt_cv, belg_cv, inside, *, low
     if inside.shape != selected_cv.shape:
         raise ValueError("calibration mask shape differs from rainfall")
     sample = selected_cv[inside & np.isfinite(selected_cv)].astype(np.float64)
+    return calibrate_selected_cv(sample, missing_cells=int(np.count_nonzero(inside & ~np.isfinite(selected_cv))),
+                                 low_percentile=low_percentile, high_percentile=high_percentile, method=method)
+
+
+def calibrate_selected_cv(sample, *, missing_cells: int, low_percentile: float, high_percentile: float, method: str) -> dict:
+    """Calibrate collected window samples identically to the whole-array helper."""
+    if not 0 <= low_percentile < high_percentile <= 100 or method != "linear":
+        raise ValueError("CV percentiles must be ordered in 0..100 with explicit linear interpolation")
+    sample = np.asarray(sample, dtype=np.float64).ravel()
+    if not np.all(np.isfinite(sample) & (sample >= 0)) or type(missing_cells) is not int or missing_cells < 0:
+        raise ValueError("selected CV samples must be finite/nonnegative and missing count valid")
     if not sample.size:
         raise ValueError("no valid selected-season CV cells inside Ethiopia")
     low, high = np.percentile(sample, [low_percentile, high_percentile], method=method)
@@ -119,7 +130,7 @@ def calibrate_drought(kiremt_mean, belg_mean, kiremt_cv, belg_cv, inside, *, low
     return {"cv_low": float(low), "cv_high": float(high), "low_percentile": float(low_percentile),
             "high_percentile": float(high_percentile), "percentile_method": method,
             "valid_calibration_cells": int(sample.size),
-            "missing_calibration_cells": int(np.count_nonzero(inside & ~np.isfinite(selected_cv))),
+            "missing_calibration_cells": missing_cells,
             "selection": "CV of the larger kiremt/belg mean; exact mean ties choose kiremt; bega excluded"}
 
 

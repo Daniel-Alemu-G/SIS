@@ -3,7 +3,7 @@ import warnings
 
 import numpy as np
 
-from scoring.soil import blend, calibrate_drought, data_weight, drought_score, limiting_factor, main_rainy_season, soil_quality
+from scoring.soil import blend, calibrate_drought, calibrate_selected_cv, data_weight, drought_score, limiting_factor, main_rainy_season, soil_quality
 
 WEIGHTS = {"mean_weight": 0.5, "min_weight": 0.5}
 
@@ -98,3 +98,9 @@ class DroughtTests(unittest.TestCase):
         risk, overall = drought_score([0.5, 0.5, 0.5], [0, 0.5, 1], cv_low=0, cv_high=1, weight=0.2)
         np.testing.assert_array_equal(risk, [0, 0.5, 1])
         np.testing.assert_array_equal(overall, np.array([0.5, 0.45, 0.4], dtype=np.float32))
+
+    def test_collected_window_calibration_equals_whole_array(self):
+        cvs = np.array([0.1, 0.2, 0.4, 0.8], dtype=np.float32)
+        whole = calibrate_drought([100] * 4, [50] * 4, cvs, [1] * 4, [1] * 4, low_percentile=25, high_percentile=90, method="linear")
+        windows = calibrate_selected_cv(cvs, missing_cells=0, low_percentile=25, high_percentile=90, method="linear")
+        self.assertEqual(windows, whole)

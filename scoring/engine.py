@@ -45,9 +45,9 @@ class ScoringEngine:
     def crop_rules(self, crop: Crop) -> tuple[dict[str, Factor], dict[str, Factor], dict[str, Factor]]:
         rows = self.config.requirements[crop.crop]
         active = dict(rows)
-        if "ph" not in active and "ph" in self.generic:
-            active["ph"] = self.generic["ph"]
         explicitly_skipped = {item["factor"] for item in self.config.skipped if item["kind"] == "crop_factor" and item["crop"] == crop.crop}
+        if "ph" not in active and "ph" in self.generic and "ph" not in explicitly_skipped:
+            active["ph"] = self.generic["ph"]
         if "rain_reliability" not in active and "rain_reliability" not in explicitly_skipped:
             active["rain_reliability"] = Factor("rain_reliability", "ramp_down", self.calibration["cv_low"], self.calibration["cv_high"], None, None,
                                                 "fraction", "Selected main-season CV percentiles inside Ethiopia", band="<season>_cv",

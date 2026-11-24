@@ -1,9 +1,10 @@
 import copy
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from scoring.config import ConfigurationError, load_config, validate_params
+from scoring.config import ConfigurationError, from_metadata, load_config, validate_params
 from scoring.tests.fixtures import manifest_fixture, params_fixture, requirements_fixture, soil_rows_fixture, write_fixture
 
 
@@ -131,6 +132,59 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigurationError, "lacks"):
             load_config(**write_fixture(self.root), manifest=manifest)
 
+    def test_frozen_configuration_round_trip_without_source_reads(self):
+        original = self.load()
+        frozen = json.loads(json.dumps(original.metadata()))
+        restored = from_metadata(frozen, manifest_fixture())
+        self.assertEqual(json.loads(json.dumps(restored.metadata())), frozen)
+        for path in self.root.iterdir():
+            path.unlink()
+        self.assertEqual(from_metadata(frozen, manifest_fixture()).soil_factors, original.soil_factors)
+
+    def test_frozen_reported_missing_rule_can_be_restored(self):
+        rows = soil_rows_fixture()
+        rows[-1]["a"] = "TBD"
+        config = self.load(soil=rows)
+        restored = from_metadata(json.loads(json.dumps(config.metadata())), manifest_fixture())
+        self.assertFalse(restored.es_factors)
+        self.assertEqual(restored.skipped, config.skipped)
+
+    def test_frozen_units_cannot_be_relabelled(self):
+        frozen = self.load().metadata()
+        frozen["band_units"]["kiremt_cv"] = "%"
+        with self.assertRaisesRegex(ConfigurationError, "units"):
+            from_metadata(frozen, manifest_fixture())
+
+    def test_frozen_provisional_factor_is_rejected(self):
+        frozen = self.load().metadata()
+        frozen["soil_factors"][-1]["source"] = "PROVISIONAL"
+        with self.assertRaisesRegex(ConfigurationError, "PROVISIONAL"):
+            from_metadata(frozen, manifest_fixture())
+
+    def test_frozen_crop_order_cannot_be_renumbered(self):
+        frozen = self.load().metadata()
+        frozen["crops"][-1]["index"] = 1
+        with self.assertRaisesRegex(ConfigurationError, "increasing"):
+            from_metadata(frozen, manifest_fixture())
+
+    def test_frozen_alias_cannot_change(self):
+        frozen = self.load().metadata()
+        frozen["requirements"]["teff"]["temperature_season_c"]["csv_factor"] = "temprature"
+        with self.assertRaisesRegex(ConfigurationError, "alias"):
+            from_metadata(frozen, manifest_fixture())
+
+    def test_frozen_missing_soil_rule_must_be_reported(self):
+        frozen = self.load().metadata()
+        frozen["soil_factors"].pop()
+        with self.assertRaisesRegex(ConfigurationError, "without reporting"):
+            from_metadata(frozen, manifest_fixture())
+
+    def test_frozen_bad_fingerprint_fails(self):
+        frozen = self.load().metadata()
+        frozen["inputs"]["params"]["sha256"] = "not a hash"
+        with self.assertRaisesRegex(ConfigurationError, "fingerprint"):
+            from_metadata(frozen, manifest_fixture())
+
 
 class ParameterTests(unittest.TestCase):
     def test_parameter_fixture_passes(self):
@@ -175,3 +229,10 @@ class ParameterTests(unittest.TestCase):
         params["sensitivity"]["mean_min_weights"] = [[0.1, 0.2]]
         with self.assertRaisesRegex(ConfigurationError, "sum"):
             validate_params(params)
+
+    def test_numeric_yaml_strings_are_not_silently_accepted(self):
+        for section, key in (("soil_quality", "mean_weight"), ("rainfall_reliability", "threshold_ratio")):
+            params = params_fixture()
+            params[section][key] = str(params[section][key])
+            with self.assertRaisesRegex(ConfigurationError, "numeric YAML"):
+                validate_params(params)
