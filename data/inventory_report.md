@@ -298,10 +298,10 @@ The provisional specification limits are diagnostics only, not accepted scientif
 
 ### Local artifacts and checks
 
-- Script: `data/interim/phosphorus/stage_phosphorus.py`
+- Script: `pipeline/phase1_build/stage_phosphorus.py`
 - Interim-only raster: `data/interim/phosphorus/phosphorus_staged_pending.tif`
 - Audit: `data/interim/phosphorus/phosphorus_report.json`
-- Tests: `data/interim/phosphorus/test_stage_phosphorus.py` (20 synthetic checks passing).
+- Tests: `pipeline/phase1_build/test_stage_phosphorus.py` (20 synthetic checks passing).
 - Every valid inside-mask value round-trips bit-for-bit; every outside-mask cell is canonical nodata. Source gaps are preserved, with no resampling, extra scaling, log/back-transform, clipping or imputation.
 - Raster and report are byte-identical on rerun. SHA-256 checks for the source, its PAM sidecar and the mask are unchanged; all 219 input files retain their sizes/modification times and the file inventory is unchanged.
 - The raster and report explicitly say `stack_eligible: false` and `publication_ready: false`. Nothing was copied to `data/processed/`; this is not a final COG/manifest delivery.
@@ -335,7 +335,7 @@ These questions initially held `P1-02`/`P1-11` open. The later AfricanSoilGrids/
 | Deliverable | Path | Verified contents |
 |---|---|---|
 | Core COG stack | `data/processed/common_stack_v1.tif` | 38 bands; canonical grid; version 1; 169,403,561 bytes |
-| Band manifest | `data/processed/band_manifest.json` | 38 matching names/indices; units, logical/physical types, nodata, source/derivation provenance, owner approvals, checksums and diagnostic statistics; 93,456 bytes |
+| Band manifest | `data/processed/band_manifest.json` | 38 matching names/indices; units, logical/physical types, nodata, source/derivation provenance, owner approvals, checksums and diagnostic statistics; 93,420 bytes |
 | Persisted woreda lookup | `data/processed/woreda_id_lookup.csv` | 1,148 active source-aware IDs/P-codes with parent metadata; 83,502 bytes |
 | Full raster acceptance report | `data/processed/stack_v1_validation.json` | Passed alignment/storage/masking/source/overview/EthioSIS/climate/lookup/geographic checks and explicit remaining Phase 1 work; 80,457 bytes |
 
@@ -344,7 +344,8 @@ The local build report, including all four delivery checksums, is `data/interim/
 
 ### Build and storage policy
 
-- Builder/acceptance script: `data/interim/stack_v1/build_stack_v1.py`, beside its raw assembly reference, accepted COG, manifest and reports. Only accepted finished products are copied to `data/processed/`; source and prepared input files are opened read-only.
+- All Phase 1 Python builders, normalizers, stagers and their regression tests are tracked in `pipeline/phase1_build/`; only their generated rasters and reports remain in `data/interim/`, with accepted products in `data/processed/`.
+- Builder/acceptance script: `pipeline/phase1_build/build_stack_v1.py`; its raw assembly reference, accepted COG, manifest and reports remain in `data/interim/stack_v1/`. Only accepted finished products are copied to `data/processed/`; source and prepared input files are opened read-only.
 - The 38-band order is fixed by the approved v1 contract in `config/stack.py`: mask/admin 2, SoilGrids/AfricanSoilGrids 9, EthioSIS 12, terrain 2, land cover 1, rainfall 9 and temperature 3. No scoring or access-distance bands are present.
 - Physical storage is uniformly float32 with canonical `-9999` nodata, 256×256 tiles, DEFLATE/predictor 3 and three overview levels (factors 2, 4 and 8). Logical uint8/uint16 types and mask/ID/class meanings remain explicit in the manifest. The mask has meaningful 0/1 pixels, never nodata pixels.
 - Phosphorus is **AfricanSoilGrids, mg/100kg, identity-copy**. Every valid full-resolution pixel remains bit-for-bit identical to the owner-approved source; no scaling, back-transformation, clipping or imputation is applied.
@@ -360,7 +361,7 @@ The local build report, including all four delivery checksums, is `data/interim/
 - EthioSIS's discarded eastern nutrient column remains empty and its confidence column remains finite zero. Inside-country confidence is valid in 0–1; no nutrient is valid at zero confidence. Nutrient-specific missingness at positive confidence is retained, including 78,415 molybdenum gaps; no all-nutrient mask or imputation is introduced.
 - All three seasonal CV bands agree with `std/mean` in 1,338,026 inside-country cells per season within float32 numerical tolerance. The seasonal rainfall/companion inputs were reused; no monthly series was rebuilt.
 - All 1,148 woreda lookup identities, names and parent/source metadata reconcile to the approved polygons. The raster contains 1,146 positive IDs; Gende Kore and Dechatu (IDs 1085/1086) are retained as the two zero-cell woredas.
-- All **103 regression tests pass**: 6 grid, 21 stack contract, 20 climate, 20 phosphorus and 36 assembly/overview/publication tests.
+- All **104 regression tests pass**: 6 grid, 21 stack contract, 20 climate, 20 phosphorus and 37 assembly/overview/publication tests. Every Phase 1 script and test is tracked in `pipeline/phase1_build/`.
 - A complete build rerun produces byte-identical raster, manifest, lookup, validation and build report. A fresh `--validate-only` run against delivered files passes and exactly matches the stored validation report.
 - All **219 original input files** retain their inventory, byte sizes and modification times compared with the snapshot before finalization. Audited input hashes and the owner-approved phosphorus source/sidecar/mask hashes are unchanged.
 
@@ -387,5 +388,5 @@ All 38 source/approved-derived cell comparisons pass at each site. Sampled wored
 Recheck the delivered raster package without regeneration:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 .venv/bin/python data/interim/stack_v1/build_stack_v1.py --validate-only
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python pipeline/phase1_build/build_stack_v1.py --validate-only
 ```
