@@ -2,9 +2,9 @@
 
 **Audit date:** 2026-11-23
 
-**Status:** complete read-only inventory; raster-foundation decisions approved; phosphorus unit confirmed, upstream product/encoding history pending
+**Status:** complete read-only inventory; raster-foundation decisions approved; AfricanSoilGrids phosphorus approved as-is in mg/100kg; raster scientific gates closed
 
-**Phosphorus follow-up:** 2026-11-24 (section 13)
+**Phosphorus follow-ups:** 2026-11-24 (initial unit confirmation in section 13; final owner approval in section 14)
 
 **Canonical grid source:** `pipeline/grid.yaml`
 
@@ -29,7 +29,8 @@
 8. `eth_admincapitals.geojson` has 857 valid points and all names populated. `loc_pcode` is empty throughout; 15 level/P-code keys repeat and the national Addis Ababa record has no level-matched P-code. A persisted source-aware record ID is required.
 9. The woreda GeoJSON has 1,148 valid polygons/multipolygons, no market fields, and no populated centre coordinates. The separate administrative gazetteer has 1,148 populated coordinate pairs plus two extra P-codes; neither file establishes market locations.
 10. On 2026-11-23 the owner approved the storage/nodata, EthioSIS alignment/missingness, boundary, road-class, access-band, runtime and deferral decisions in section 11. The final v1 stack remains blocked only on the requested phosphorus provenance details; approved preparatory transformations and tests may proceed.
-11. On 2026-11-24 the owner confirmed phosphorus in `data/inputs/SoilGrids/` is **mg/100kg**. The supplied file passes canonical-grid validation and an interim masked identity-copy with zero bitwise mismatches. Its upstream product and scaling/back-transformation history are still not established; technical staging does not close the publication gate.
+11. The initial 2026-11-24 phosphorus unit confirmation established **mg/100kg** and a zero-mismatch interim masked copy. At that point product/transform approval remained open; the subsequent owner confirmation in finding 12 supersedes that initial gate.
+12. The owner subsequently identified **AfricanSoilGrids**, explicitly distinguished it from global SoilGrids, and approved the supplied phosphorus values **as-is, with no scaling or change**. `sg_p` retains mg/100kg, source gaps and all valid values; no rescaling or back-transformation is applied. This closes `P1-02` and enables final v1 assembly.
 
 ## 3. Canonical grid and environment
 
@@ -82,7 +83,7 @@ Only the seasonal rainfall file declares COG layout and has internal overviews (
 | `cfvo_0-30cm_mean_1km_4326.tif` / `cfvo_0-30cm_mean_1km_4326` | vol % | 1.802 | 16.96 | 56.901 | 6,213 | ok |
 | `clay_0-30cm_mean_1km_4326.tif` / `clay_0-30cm_mean_1km_4326` | % | 14.585 | 34.965 | 69.441 | 6,213 | ok |
 | `n_0-30cm_mean_1km_4326.tif` / `n_0-30cm_mean_1km_4326` | mg/kg | 446.026 | 1,247.783 | 8,191.428 | 5,416 | confirmed mg/kg; values exceed rough 500–5000 range |
-| `p_0-30cm_mean_1km_4326.tif` / unnamed singleton | mg/100kg (owner, 2026-11-24) | 174.626 | 1,596.827 | 9,091.994 | 5,416 | unit confirmed; upstream product/encoding history pending; 2,200 cells above provisional range, not clipped |
+| `p_0-30cm_mean_1km_4326.tif` / unnamed singleton | mg/100kg (owner, 2026-11-24) | 174.626 | 1,596.827 | 9,091.994 | 5,416 | AfricanSoilGrids; owner approved values as-is; 2,200 cells above provisional range, not clipped |
 | `phh2o_0-30cm_mean_1km_4326.tif` / `phh2o_0-30cm_mean_1km_4326` | pH | 4.931 | 7.121 | 8.86 | 6,213 | ok |
 | `sand_0-30cm_mean_1km_4326.tif` / `sand_0-30cm_mean_1km_4326` | % | 3.36 | 33.886 | 69.007 | 6,213 | ok |
 | `silt_0-30cm_mean_1km_4326.tif` / `silt_0-30cm_mean_1km_4326` | % | 10.22 | 30.861 | 65.287 | 6,213 | ok |
@@ -229,7 +230,7 @@ The core v1 plan has 38 bands: mask/admin 2, SoilGrids/Africa product 9, EthioSI
 |---|---|
 | SoilGrids bands except phosphorus | copy after exact-grid checks; mask outside Ethiopia; use documented units |
 | `sg_n` | copy in mg/kg without rescaling; sole nitrogen input |
-| `sg_p` | interim masked identity-copy in owner-confirmed mg/100kg; final inclusion awaits upstream product and scaling/back-transformation confirmation |
+| `sg_p` | approved AfricanSoilGrids input; exact-grid masked identity-copy in mg/100kg, with no scaling or back-transformation |
 | EthioSIS IDW | approved: window-copy the first 1812 columns without interpolation; preserve nutrient-specific nulls independently of positive confidence |
 | 90 m slope | derive percent-to-degree pixels under `data/interim/`, then average to canonical grid; preserve original |
 | Existing 1 km slope | reference/validation only; do not relabel or convert its mean percentage as mean degrees |
@@ -244,20 +245,20 @@ The core v1 plan has 38 bands: mask/admin 2, SoilGrids/Africa product 9, EthioSI
 - Specifications requested mixed uint8/uint16/float32 bands and per-kind nodata in one GeoTIFF, while GeoTIFF storage has one physical datatype and generally one dataset nodata tag. `grid.yaml` says -9999; continuous-band docs say NaN. Mixed categorical/continuous overview resampling also needs a prototype.
 - EthioSIS is one column wider than the grid and has nutrient-specific missingness despite positive confidence.
 - Slope inputs are percentages, not degrees. Existing `slope_1km.tif` reaches 138.584% inside Ethiopia and cannot be inserted as `slope_mean_deg`.
-- Phosphorus has no embedded unit/source metadata or band description. The owner confirmed mg/100kg on 2026-11-24, but a containing folder/filename does not establish its upstream product or scaling/back-transformation history.
+- Phosphorus has no embedded unit/source metadata or band description. Its AfricanSoilGrids source, mg/100kg unit and no-transform policy are owner-confirmed, not inferred from its containing SoilGrids folder or approximate PAM statistics.
 - Roads have no places layer, `ref` or `fclass`; mixed non-line features cannot be loaded as road lines, and the `surface` field is sparse rather than absent.
 - Woreda polygons do not contain markets or populated centre fields. Gazetteer/administrative-capital points are not verified markets.
 - Administrative geometries have version/date metadata but no sufficient licence/source/full-resolution declaration in the supplied files.
 - The installed runtime/tooling is incomplete and no PostGIS target is configured.
 
-## 11. Owner decisions and remaining gate
+## 11. Owner decisions and infrastructure deferral
 
-| Gate | Owner decision (2026-11-23) | Build consequence |
+| Gate | Owner decision (2026-11-23, with dated follow-ups) | Build consequence |
 |---|---|---|
 | Physical stack storage/nodata | Approved uniform float32 physical storage and canonical `-9999`; retain logical types in the manifest | Prototype and validate average versus mode overviews before assembling real bands; do not change `grid.yaml`. |
 | EthioSIS width | Approved a window-copy of the first 1812 columns with no interpolation | Verify the discarded eastern column on every run and write an audit report. |
 | EthioSIS confidence | Approved nutrient-specific nulls even where confidence is positive | Validate each nutrient independently; never impute missing nutrients. |
-| Phosphorus | Follow-up 2026-11-24: owner identified the supplied SoilGrids-folder input and confirmed mg/100kg; upstream product and scaling/back-transformation history remain unsupplied | **Only remaining scientific gate for final v1 assembly.** An interim masked identity-copy is audited; do not include, publish or score `sg_p` until the remaining provenance is recorded and verified. |
+| Phosphorus | Final follow-up 2026-11-24: AfricanSoilGrids, not global SoilGrids; supplied mg/100kg values are approved as-is and require no scaling or change | **Scientific gate closed.** Include the lossless, country-masked `sg_p`; do not rescale, log/back-transform, clip or impute its valid values. Scoring remains Phase 2 work. |
 | Admin boundaries | Approved the supplied v04/2025-01-01 polygons as full-resolution lookup/rasterization data with publication rights | Build the country mask and deterministic woreda-ID mapping from these files. |
 | Road classes | Approved an explicit motor-road allowlist: main classes plus links; “any” also includes tertiary/link, unclassified, residential, living street, service, track and road | Use these classes when named-object work resumes; main does not mean all-weather. |
 | Optional access bands | Deferred all three from core v1 | Add only through a later append-only stack version after road/centre validation. |
@@ -269,9 +270,11 @@ Phase 2-only questions (threshold canonicality, provisional scientific values an
 
 ## 12. Sign-off record
 
-The decisions in section 11 were explicitly recorded through the implementation conversation. They authorize only the listed raster-foundation work. The inventory audit changed no source data. The 2026-11-24 phosphorus unit confirmation authorizes the interim work in section 13, not an invented product identity or back-transformation. Final stack assembly still requires the remaining phosphorus provenance.
+The decisions in section 11 were explicitly recorded through the implementation conversation. They authorize the listed raster-foundation work, including final stack assembly after the owner's AfricanSoilGrids/as-is confirmation in section 14. No source data was changed. Named-object/PostGIS/PMTiles infrastructure is still deferred; this is not complete Phase 1 sign-off.
 
-## 13. Phosphorus unit confirmation and interim staging (2026-11-24)
+## 13. Initial phosphorus unit confirmation and interim staging (2026-11-24)
+
+This records the earlier unit-only stage. The subsequent owner approval in section 14 supersedes its pending publication status and answers the questions below.
 
 ### Confirmed and verified
 
@@ -303,9 +306,22 @@ The provisional specification limits are diagnostics only, not accepted scientif
 - Raster and report are byte-identical on rerun. SHA-256 checks for the source, its PAM sidecar and the mask are unchanged; all 219 input files retain their sizes/modification times and the file inventory is unchanged.
 - The raster and report explicitly say `stack_eligible: false` and `publication_ready: false`. Nothing was copied to `data/processed/`; this is not a final COG/manifest delivery.
 
-### Remaining owner questions
+### Questions at the initial unit-only stage (resolved in section 14)
 
 1. What is the exact upstream phosphorus product/version/source link and measurement meaning (for example, the extractable-P method)? Being in the SoilGrids folder does not establish that it is an ISRIC SoilGrids product; the specification identifies a separate Africa-wide product.
 2. Are the supplied pixel values already physical mg/100kg after any product-specific scaling/back-transformation? Confirm the upstream processing, or provide the required conversion if they remain encoded. No processing history or nonlinear transform was inferred from the observed range.
 
-`P1-02` and the final approval portion of `P1-11` remain open. The other 37 core-band inputs are already prepared locally, but `P1-12`/`P1-13` final stack assembly/acceptance must wait for these answers. PostGIS loaders and PMTiles remain separately deferred for lack of the approved test database/toolchain.
+These questions initially held `P1-02`/`P1-11` open. The later AfricanSoilGrids/as-is confirmation closes that gate; PostGIS loaders and PMTiles remain separately deferred for lack of the approved test database/toolchain.
+
+## 14. Final AfricanSoilGrids phosphorus approval (2026-11-24)
+
+- **Owner-confirmed product:** AfricanSoilGrids, not the normal/global SoilGrids product.
+- **Owner-confirmed unit:** mg/100kg.
+- **Owner-approved operation:** use the supplied pixel values as-is; no scaling, unit conversion, log transform or back-transformation is required or applied. The standard Ethiopia mask and source nodata handling remain part of the approved stack policy.
+- **Approval scope:** the existing `data/inputs/SoilGrids/p_0-30cm_mean_1km_4326.tif`, whose SHA-256 remains the value recorded in section 13. Product version/source URL and upstream processing history are not invented; the owner's explicit as-is approval is the recorded provenance authority.
+- **Approved artifact:** `data/interim/phosphorus/phosphorus_staged.tif`; the earlier `phosphorus_staged_pending.tif` is a superseded local artifact and is not consumed by the stack build.
+- **Current audit:** `data/interim/phosphorus/phosphorus_report.json`, now `status: passed`, `stack_eligible: true`, with the AfricanSoilGrids identity and owner approval recorded. No publication blocker remains for this input.
+- **Checks:** 20 regression tests pass; every valid phosphorus pixel round-trips bit-for-bit; the 5,416 inside-country gaps are preserved; source/mask hashes are unchanged; reruns produce byte-identical approved raster and report.
+- **Range findings:** the 2,200 cells above the specification's provisional diagnostic limit are retained and reported, not treated as scientific errors or scored/clipped. No provisional scoring threshold is introduced.
+
+`P1-02` and `P1-11` are complete. All 38 core-band ingredients exist locally and final raster assembly/acceptance can proceed. This does not authorize installing named-object infrastructure or starting scoring/API/UI work.
