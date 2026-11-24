@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-11-23
 
-**Status:** complete read-only inventory; raster-foundation decisions approved; AfricanSoilGrids phosphorus approved as-is in mg/100kg; raster scientific gates closed
+**Status:** complete read-only inventory; AfricanSoilGrids phosphorus approved as-is in mg/100kg; final 38-band stack v1 raster package accepted; PostGIS/PMTiles still owner-deferred
 
 **Phosphorus follow-ups:** 2026-11-24 (initial unit confirmation in section 13; final owner approval in section 14)
 
@@ -325,3 +325,67 @@ These questions initially held `P1-02`/`P1-11` open. The later AfricanSoilGrids/
 - **Range findings:** the 2,200 cells above the specification's provisional diagnostic limit are retained and reported, not treated as scientific errors or scored/clipped. No provisional scoring threshold is introduced.
 
 `P1-02` and `P1-11` are complete. All 38 core-band ingredients exist locally and final raster assembly/acceptance can proceed. This does not authorize installing named-object infrastructure or starting scoring/API/UI work.
+
+## 15. Final stack v1 raster delivery and acceptance (2026-11-24)
+
+`P1-12` and `P1-13` are complete. This is the finished **Phase 1 raster package**, not complete Phase 1 sign-off: named-object/PostGIS and PMTiles deliverables remain separately deferred.
+
+### Delivered files
+
+| Deliverable | Path | Verified contents |
+|---|---|---|
+| Core COG stack | `data/processed/common_stack_v1.tif` | 38 bands; canonical grid; version 1; 169,403,561 bytes |
+| Band manifest | `data/processed/band_manifest.json` | 38 matching names/indices; units, logical/physical types, nodata, source/derivation provenance, owner approvals, checksums and diagnostic statistics; 93,456 bytes |
+| Persisted woreda lookup | `data/processed/woreda_id_lookup.csv` | 1,148 active source-aware IDs/P-codes with parent metadata; 83,502 bytes |
+| Full raster acceptance report | `data/processed/stack_v1_validation.json` | Passed alignment/storage/masking/source/overview/EthioSIS/climate/lookup/geographic checks and explicit remaining Phase 1 work; 80,457 bytes |
+
+Stack SHA-256: `0e53cb7adabcfccf2485b68ab9f46c793f41ac4b9082d163f64d2e7f985e4791`.
+The local build report, including all four delivery checksums, is `data/interim/stack_v1/stack_v1_build_report.json`.
+
+### Build and storage policy
+
+- Builder/acceptance script: `data/interim/stack_v1/build_stack_v1.py`, beside its raw assembly reference, accepted COG, manifest and reports. Only accepted finished products are copied to `data/processed/`; source and prepared input files are opened read-only.
+- The 38-band order is fixed by the approved v1 contract in `config/stack.py`: mask/admin 2, SoilGrids/AfricanSoilGrids 9, EthioSIS 12, terrain 2, land cover 1, rainfall 9 and temperature 3. No scoring or access-distance bands are present.
+- Physical storage is uniformly float32 with canonical `-9999` nodata, 256×256 tiles, DEFLATE/predictor 3 and three overview levels (factors 2, 4 and 8). Logical uint8/uint16 types and mask/ID/class meanings remain explicit in the manifest. The mask has meaningful 0/1 pixels, never nodata pixels.
+- Phosphorus is **AfricanSoilGrids, mg/100kg, identity-copy**. Every valid full-resolution pixel remains bit-for-bit identical to the owner-approved source; no scaling, back-transformation, clipping or imputation is applied.
+- Administrative grids and mean-degree slope reuse their previously accepted derivations. All other numeric bands compare directly to their original source rasters with the approved mask/nodata handling and EthioSIS window, without interpolation. The 90 m terrain sources remain separate and unchanged.
+- The first unpublished candidate exposed GDAL GTiff cascading of average overviews: `sg_phh2o` differed from a direct full-resolution average at 12,008 factor-4 pixels and 21,469 factor-8 pixels, including 61 factor-8 missingness differences. COG copying itself had zero mismatches. That candidate was rejected before delivery. Every overview is now regenerated **directly from full-resolution values**, using average for continuous bands and mode for mask/ID/class bands; no base/source pixels changed.
+- Reruns overwrite only this step's own outputs. Existing unfamiliar deliverables are not replaced; different existing v1 raster content requires an explicit version decision. No processing artifacts, source inputs or `docs/` updates are staged for commit.
+
+### Acceptance results
+
+- Grid, CRS, transform, pixel-is-area, band order, version, units/tags and logical/physical storage checks pass. Full GDAL COG structural/tile validation passes with **no warnings or errors**.
+- All 38 bands reopen and match prepared inputs and original numeric sources or approved derivations bit-for-bit; all comparisons have **zero mismatches**. Every non-mask band is nodata outside the 1,338,026-cell Ethiopia mask.
+- All **114 overview levels** match independent direct-from-full-resolution references and raw-to-COG copies bit-for-bit. Mask values, land-cover classes and IDs stay integral and legal.
+- EthioSIS's discarded eastern nutrient column remains empty and its confidence column remains finite zero. Inside-country confidence is valid in 0–1; no nutrient is valid at zero confidence. Nutrient-specific missingness at positive confidence is retained, including 78,415 molybdenum gaps; no all-nutrient mask or imputation is introduced.
+- All three seasonal CV bands agree with `std/mean` in 1,338,026 inside-country cells per season within float32 numerical tolerance. The seasonal rainfall/companion inputs were reused; no monthly series was rebuilt.
+- All 1,148 woreda lookup identities, names and parent/source metadata reconcile to the approved polygons. The raster contains 1,146 positive IDs; Gende Kore and Dechatu (IDs 1085/1086) are retained as the two zero-cell woredas.
+- All **103 regression tests pass**: 6 grid, 21 stack contract, 20 climate, 20 phosphorus and 36 assembly/overview/publication tests.
+- A complete build rerun produces byte-identical raster, manifest, lookup, validation and build report. A fresh `--validate-only` run against delivered files passes and exactly matches the stored validation report.
+- All **219 original input files** retain their inventory, byte sizes and modification times compared with the snapshot before finalization. Audited input hashes and the owner-approved phosphorus source/sidecar/mask hashes are unchanged.
+
+### Geographic/source spot checks
+
+Coordinates are shown rounded here; the JSON report preserves their full precision. Addis, Bahir Dar and Godey coordinates come from the supplied capitals. Danakil is an explicitly labelled representative depression test site. These differ from some coordinates used in the original section 8 inventory checks; no source values were edited.
+
+| Diagnostic site (lon, lat) | Elevation 1 km | Elevation exact source 90 m | Mean slope 1 km | Exact source slope, explicitly converted | Kiremt mean |
+|---|---:|---:|---:|---:|---:|
+| Addis Ababa (38.7584762, 9.0105067) | 2,350.556 m | 2,346.862 m | 2.835° | 2.752° | 853.443 mm |
+| Danakil/Dallol (40.3, 14.24) | -102.500 m | -92.962 m | 2.551° | 0.649° | 93.280 mm |
+| Bahir Dar (37.3870568, 11.5918028) | 1,792.666 m | 1,796.184 m | 1.049° | 0.129° | 1,201.135 mm |
+| Godey, Somali (43.5521774, 5.9553966) | 291.748 m | 293.634 m | 0.425° | 0.455° | 9.146 mm |
+
+All 38 source/approved-derived cell comparisons pass at each site. Sampled woreda IDs identify polygons containing the canonical cell centres. Both separate 90 m rasters are sampled after transforming coordinates into their own CRS; native Albers slope percentages are explicitly converted to degrees **after** sampling and are not confused with the 1 km mean-degree band.
+
+### Preserved findings and remaining deliverables
+
+- Gaps are retained: 6,213 cells for pH/texture/CEC/CFVO, 6,962 for SOC, 5,416 each for nitrogen/phosphorus, 5 for elevation and 4,501 for land cover. Expected EthioSIS nutrient gaps are reported independently.
+- Diagnostic outliers are retained: nitrogen 2,584 (16 below, 2,568 above); phosphorus 2,200 above the explicitly **provisional diagnostic** limit; belg rainfall 140 above. These limits are not scoring thresholds. No owner-supplied unknown scientific bound is invented; absent EthioSIS nutrient bounds and rainfall-std upper bounds are explicitly skipped/listed in the acceptance report.
+- `P1-14`–`P1-22` remain owner-deferred: disposable PostGIS target/tooling, standalone schema, indexed/idempotent woreda/capital/sample/road loaders and database validation, then `roads.pmtiles` plus HTTP Range/display smoke tests. Final readiness inspection still finds no configured database or `.env`, and no `psql`, `pg_isready`, `tippecanoe` or `pmtiles`; `pipeline/04_load/` does not exist.
+- `P1-23` complete Phase 1 acceptance remains open until raster **and** named-object/display deliverables are reconciled. Optional access-distance bands remain deferred to a later version; actual markets remain unavailable. No Phase 2/3 work is started.
+
+Recheck the delivered raster package without regeneration:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python data/interim/stack_v1/build_stack_v1.py --validate-only
+```
