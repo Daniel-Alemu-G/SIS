@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-11-23
 
-**Status:** complete read-only inventory; owner sign-off required before pipeline implementation
+**Status:** complete read-only inventory; raster-foundation decisions approved, phosphorus provenance pending
 
 **Canonical grid source:** `pipeline/grid.yaml`
 
@@ -26,7 +26,7 @@
 7. The roads GeoPackage has one mixed-geometry `roads` layer (450,047 records: 447,034 lines, 2,617 points, 396 polygons), no places layer, no `fclass` or `ref`, and typed string IDs. Only 10,290 records have any preserved name field populated.
 8. `eth_admincapitals.geojson` has 857 valid points and all names populated. `loc_pcode` is empty throughout; 15 level/P-code keys repeat and the national Addis Ababa record has no level-matched P-code. A persisted source-aware record ID is required.
 9. The woreda GeoJSON has 1,148 valid polygons/multipolygons, no market fields, and no populated centre coordinates. The separate administrative gazetteer has 1,148 populated coordinate pairs plus two extra P-codes; neither file establishes market locations.
-10. Stack construction is blocked by explicit owner decisions in section 11: storage/nodata, the EthioSIS alignment and confidence rules, phosphorus, boundary provenance, road classes/access-band scope, runtime and database/tooling.
+10. On 2026-11-23 the owner approved the storage/nodata, EthioSIS alignment/missingness, boundary, road-class, access-band, runtime and deferral decisions in section 11. The final v1 stack remains blocked only on the requested phosphorus provenance details; approved preparatory transformations and tests may proceed.
 
 ## 3. Canonical grid and environment
 
@@ -164,7 +164,7 @@ Land-cover counts over the raster valid footprint: `10`=184,331, `20`=512,514, `
 - IDs are unique strings: 447,425 `way/...`, 2,617 `node/...`, 5 `relation/...`; maximum length 17. Preserve them as strings and add a stable part index when line normalization explodes a source geometry.
 - Name coverage: 10,290 records have at least one of `name`, `name_en`, `name_am`, `name_latin`; 439,821 have no generic `name`. Keep source-name fields distinct from generated capital context.
 - Surface is populated on 47,886 records (10.64%), so it is present but too incomplete to equate `is_main` with “all-weather” without a sourced rule.
-- Proposed main classes select 14,581 line records. Proposed “any road” exclusions (`footway, path, steps, pedestrian, cycleway`) leave 397,865 lines, but the remaining 45 observed classes include ambiguous non-driving features; owner approval is required.
+- The approved main allowlist (`motorway`, `trunk`, `primary`, `secondary` and their `_link` classes) selects 14,581 line records. The approved “any road” allowlist adds `tertiary`, `tertiary_link`, `unclassified`, `residential`, `living_street`, `service`, `track` and `road`, selecting 395,963 lines. Construction, proposed, non-motor and ambiguous classes are excluded.
 - Complete observed class counts (all geometries): `bridleway` 29, `bus_stop` 417, `construction` 1,869, `corridor` 1, `crossing` 1,761, `cycleway` 37, `emergency_access_point` 1, `emergency_bay` 1, `escape` 1, `footway` 4,974, `living_street` 271, `milestone` 2, `mini_roundabout` 29, `motorway` 128, `motorway_junction` 38, `motorway_link` 113, `path` 43,892, `pedestrian` 73, `platform` 1, `primary` 4,580, `primary_link` 646, `proposed` 1, `raceway` 2, `residential` 243,959, `rest_area` 37, `road` 147, `secondary` 5,449, `secondary_link` 309, `service` 17,632, `services` 21, `steps` 215, `stop` 1, `street_lamp` 57, `tertiary` 14,661, `tertiary_link` 235, `toll_gantry` 6, `track` 40,337, `traffic_mirror` 2, `traffic_signals` 84, `trunk` 3,165, `trunk_link` 355, `turning_circle` 165, `turning_loop` 4, `unclassified` 64,338, `yes` 1.
 
 ## 6. EthioSIS sample CSV
@@ -226,14 +226,14 @@ The core v1 plan has 38 bands: mask/admin 2, SoilGrids/Africa product 9, EthioSI
 |---|---|
 | SoilGrids bands except phosphorus | copy after exact-grid checks; mask outside Ethiopia; use documented units |
 | `sg_n` | copy in mg/kg without rescaling; sole nitrogen input |
-| `sg_p` | blocked pending source/product/unit/scaling/back-transform confirmation |
-| EthioSIS IDW | blocked pending approval of empty-column window-copy and nutrient-specific missingness semantics |
+| `sg_p` | blocked pending the exact provenance details the owner elected to provide before v1 construction |
+| EthioSIS IDW | approved: window-copy the first 1812 columns without interpolation; preserve nutrient-specific nulls independently of positive confidence |
 | 90 m slope | derive percent-to-degree pixels under `data/interim/`, then average to canonical grid; preserve original |
 | Existing 1 km slope | reference/validation only; do not relabel or convert its mean percentage as mean degrees |
 | 1 km DEM, land cover, seasonal rainfall, temperature | consume after storage policy; retain/report inside-mask gaps and source provenance |
 | Monthly rainfall | upstream provenance only; no rebuild |
-| Admin polygons | rasterize/load only after full-resolution/provenance approval and deterministic ID mapping |
-| Roads/capitals | PostGIS/PMTiles after schema, class and database/tooling approval |
+| Admin polygons | approved as the full-resolution, publishable v04/2025-01-01 source; rasterize with deterministic ID mapping |
+| Roads/capitals | approved motor-road classes recorded; PostGIS/PMTiles work deferred until database/tooling is supplied |
 | Markets | unavailable pending actual market locations; not a core stack prerequisite |
 
 ## 10. Mismatches that must not be papered over
@@ -247,23 +247,23 @@ The core v1 plan has 38 bands: mask/admin 2, SoilGrids/Africa product 9, EthioSI
 - Administrative geometries have version/date metadata but no sufficient licence/source/full-resolution declaration in the supplied files.
 - The installed runtime/tooling is incomplete and no PostGIS target is configured.
 
-## 11. Owner decisions required before pipeline code
+## 11. Owner decisions and remaining gate
 
-| Gate | Recommended decision | Alternatives/consequence |
+| Gate | Owner decision (2026-11-23) | Build consequence |
 |---|---|---|
-| Physical stack storage/nodata | Uniform float32 physical storage, logical types in manifest, and a single agreed nodata representation; prototype per-band average/mode overviews before real build | Keeping mixed logical types as physical types requires separate files and violates the one-stack decision. Choose NaN or canonical -9999 explicitly; do not silently edit `grid.yaml`. |
-| EthioSIS width | Approve a window-copy of the first 1812 columns, with no interpolation; verify the discarded column remains empty/zero | Otherwise provide a repaired source. Do not change the canonical grid or silently crop. |
-| EthioSIS confidence | Confidence describes sample proximity; allow individual nutrients to remain null with positive confidence, validate each nutrient separately, and let detailed scoring ignore missing extras | A strict all-nutrients rule would discard substantial valid coverage or require a new IDW product. |
-| Phosphorus | Provide/confirm the exact product, final unit, scaling and back-transformation | Exclude `sg_p` from v1 and append it only in a later stack version; do not publish or score an unknown unit. |
-| Admin boundaries | Confirm these v04/2025-01-01 polygons are approved full-resolution lookup/rasterization data and provide source/licence | Without confirmation, defer woreda raster/PostGIS publication. |
-| Road classes | Approve main classes `motorway,trunk,primary,secondary` plus links; approve or revise “any road” exclusions after reviewing all observed classes | Class choice controls PMTiles and any distance products. Main class is not automatically “all-weather.” |
-| Optional access bands | Defer all three from core v1; add in an append-only later version after road/centre validation | Including them now adds road-class, approximation and capital-coverage dependencies. |
-| Runtime | Create a project `.venv` from an owner-approved interpreter and add a pinned dependency manifest; never install into system Python | Provide another existing environment path if preferred. |
-| PostGIS/tooling | Provide a test `DATABASE_URL` and loader privileges, or approve project-local container infrastructure; approve a PMTiles/tippecanoe installation route | Loaders/assets can be designed but not smoke-tested without these. |
-| Markets | Provide actual market points/fields later | Keep unavailable; no centroid/capital proxy. |
+| Physical stack storage/nodata | Approved uniform float32 physical storage and canonical `-9999`; retain logical types in the manifest | Prototype and validate average versus mode overviews before assembling real bands; do not change `grid.yaml`. |
+| EthioSIS width | Approved a window-copy of the first 1812 columns with no interpolation | Verify the discarded eastern column on every run and write an audit report. |
+| EthioSIS confidence | Approved nutrient-specific nulls even where confidence is positive | Validate each nutrient independently; never impute missing nutrients. |
+| Phosphorus | Owner chose to provide provenance now; exact product, unit, scaling and back-transformation have not yet been supplied | **Only remaining scientific gate for final v1 assembly.** Do not include, publish or score `sg_p` until the details are recorded and verified. |
+| Admin boundaries | Approved the supplied v04/2025-01-01 polygons as full-resolution lookup/rasterization data with publication rights | Build the country mask and deterministic woreda-ID mapping from these files. |
+| Road classes | Approved an explicit motor-road allowlist: main classes plus links; “any” also includes tertiary/link, unclassified, residential, living street, service, track and road | Use these classes when named-object work resumes; main does not mean all-weather. |
+| Optional access bands | Deferred all three from core v1 | Add only through a later append-only stack version after road/centre validation. |
+| Runtime | Approved a Python 3.12 project `.venv`, reusing system GDAL and installing pinned missing packages only inside it | Add the dependency manifest and run implementation/tests through `.venv`. |
+| PostGIS/tooling | Deferred named-object and PMTiles work because no test database or toolchain is available | Implement the raster foundation first; do not create untestable loaders/assets now. |
+| Markets | Actual locations remain pending | Keep unavailable; no centroid/capital proxy. |
 
 Phase 2-only questions (threshold canonicality, provisional scientific values and crop/scoring review) do not authorize Phase 1 scoring work and should not delay non-scoring inventory sign-off.
 
 ## 12. Sign-off record
 
-Record owner answers here or in the implementation conversation before any data-repair/stack/load script is written. The inventory audit itself changes no source data and approves no proposed repair by implication.
+The decisions in section 11 were explicitly recorded through the implementation conversation. They authorize only the listed raster-foundation work. The inventory audit changed no source data. Final stack assembly still requires the exact phosphorus provenance selected for immediate resolution.
