@@ -9,10 +9,11 @@
 - `P1-06` — mask (1,338,026 cells), 1,148-row woreda lookup, and stable ID raster pass rerun checks; two tiny woredas contain no cell centre.
 - `P1-07` — all 12 EthioSIS bands window-copy to 1812 columns with no interpolation; per-nutrient null audits pass.
 - `P1-08` — converted 269,774,816 valid 90 m percentage pixels to degrees before averaging; all 1,338,026 masked cells are valid and span 0–49.62°.
+- `P1-09` — staged eight exact-grid SoilGrids bands plus elevation with zero round-trip mismatches; phosphorus is absent, known source gaps remain, and 2,584 nitrogen sanity outliers are reported without clipping.
 
 ## In progress
 
-- `P1-09` — stage exact-grid SoilGrids bands except gated phosphorus, plus `elevation_m`.
+- `P1-10` — stage categorical land cover and the supplied seasonal rainfall and temperature bands.
 
 ## Decisions
 
