@@ -1,0 +1,18 @@
+factor,display_name,band,detailed_band,shape,a,b,c,d,unit,low_text,high_text,source,notes
+ph,pH,sg_phh2o,,trapezoid,4.5,6,7.3,8.5,pH,acidic pH,alkaline pH,EthioSIS 2014 pH classes, a from MSU Extension
+organic_carbon,Organic carbon,sg_soc,,ramp_up,5,30,,,g/kg,low organic carbon,,EthioSIS OC classes (App. 4 of PMC10361374),LOW CONFIDENCE: check distribution first
+nitrogen,Nitrogen (total),sg_n,,ramp_up,500,2500,,,mg/kg,low nitrogen,,EthioSIS total N classes (converted from %),table prints low class as 0.1-0.5 (likely typo)
+phosphorus,Phosphorus,sg_p,,ramp_up,0,3000,,,mg/100kg,low phosphorus,,EthioSIS critical levels (Mehlich-3),unit of sg_p unconfirmed
+cec,Nutrient holding capacity,sg_cec,,ramp_up,5,25,,,cmol(c)/kg,low nutrient holding capacity,,Landon 1991,score 1 at start of medium
+coarse_fragments,Coarse fragments,sg_cfvo,,ramp_down,15,50,,,vol %,,high coarse fragments,PROVISIONAL,no source found
+slope,Slope,slope_mean_deg,,ramp_down,4.6,16.7,,,degrees,,steep slope,FAO (8% and 30% slope converted),check distribution on cropland
+potassium,Potassium,,es_k,ramp_up,90,190,,,mg/kg,low potassium,,Teff calibration (a), EthioSIS atlas low class (b)
+magnesium,Magnesium,,es_mg,ramp_up,36,120,,,mg/kg,low magnesium,,Landon-style ratings converted from cmol(+)/kg,CSV unit unconfirmed
+sulfur,Sulfur,,es_s,ramp_up,10,20,,,mg/kg,low sulfur,,EthioSIS critical levels (Mehlich-3),CSV unit unconfirmed
+zinc,Zinc,,es_zn,trapezoid,0.5,1.5,10,20,mg/kg,low zinc,,EthioSIS critical levels (Mehlich-3),CSV unit unconfirmed
+copper,Copper,,es_cu,trapezoid,0.5,1,20,30,mg/kg,low copper,,EthioSIS critical levels (Mehlich-3),CSV unit unconfirmed
+iron,Iron,,es_fe,trapezoid,60,80,300,400,mg/kg,low iron,,EthioSIS critical levels (Mehlich-3),CSV median looks inconsistent with mg/kg
+calcium,Calcium,,es_ca,ramp_up,400,1000,,,mg/kg,low calcium,,EthioSIS critical levels (Mehlich-3),recommend not scoring
+manganese,Manganese,,es_mn,trapezoid,60,100,300,500,mg/kg,low manganese,,EthioSIS critical levels (Mehlich-3),pH-dependent
+molybdenum,Molybdenum,,es_mo,ramp_up,0,0.1,,,mg/kg,low molybdenum,,EthioSIS critical levels (Mehlich-3),skip in v1
+sodium,Sodium,,es_na,ramp_down,161,460,,,mg/kg,,high sodium,EthioSIS critical levels (Mehlich-3),skip in v1

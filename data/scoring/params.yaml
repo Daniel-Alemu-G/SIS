@@ -1,0 +1,68 @@
+# Materialized from the owner's answers in docs/agent/PROGRESS.md on 2026-11-24.
+# Scientific values are data, never defaults hidden inside the scoring code.
+soil_quality:
+  mean_weight: 0.5
+  min_weight: 0.5
+drought:
+  weight: 0.2
+  cv_low_percentile: 25
+  cv_high_percentile: 90
+  percentile_method: linear
+blend:
+  detailed_label_min_weight: 0.5
+viability:
+  fertility_floor: 0.8
+  best_crop_min_score: 0.25
+  best_crop_tie_margin: 0.05
+score_classes: [25, 50, 70, 85]
+rainfall_reliability:
+  method: normal_fraction_of_mean
+  threshold_ratio: 0.75
+crop_factor_aliases:
+  temperature: temperature_season_c
+active_soil_factors:
+  - ph
+  - organic_carbon
+  - nitrogen
+  - phosphorus
+  - cec
+  - slope
+  - potassium
+  - magnesium
+  - sulfur
+  - zinc
+  - copper
+  - iron
+  - calcium
+  - manganese
+  - molybdenum
+  - sodium
+skipped_soil_factors:
+  coarse_fragments: "PROVISIONAL source has no citation; excluded from accepted scoring"
+confirmed_units:
+  phosphorus: mg/100kg
+  potassium: mg/kg
+  magnesium: mg/kg
+  sulfur: mg/kg
+  zinc: mg/kg
+  copper: mg/kg
+  iron: mg/kg
+  calcium: mg/kg
+  manganese: mg/kg
+  molybdenum: mg/kg
+  sodium: mg/kg
+sensitivity:
+  mean_min_weights: [[0.3, 0.7], [0.7, 0.3]]
+  fertility_floors: [0.7, 0.9]
+  # A no-drought ablation, not a proposed replacement scientific threshold.
+  drought_weights: [0.0]
+  coverage_radius: skip_owner_requested
+approval:
+  approved: true
+  authority: "Owner responses below blockers in docs/agent/PROGRESS.md"
+  date: "2026-11-24"
+  tuning_source: "Specification/03_scoring.md proposed tuning explicitly approved"
+  crop_requirements_file: data/crops/crop_requirments.csv
+  chickpea_rainfall_proxy: "Owner-approved Kiremt recharge/residual-moisture proxy"
+  unit_authority: "Owner-confirmed units in Specification/02_data_inputs.md section 2.3; phosphorus mg/100kg"
+  activation_authority: "All specified EthioSIS nutrient values confirmed; use the ten scored rows from 03_scoring.md, excluding informational silicon"
