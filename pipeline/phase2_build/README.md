@@ -27,6 +27,8 @@ Under `data/interim/score_build/`:
   factor lookups, original crop IDs and input/code SHA-256 fingerprints.
 - `band_manifest_v1.json`: original v1 manifest, archived byte-for-byte.
 - `technical_validation.json`: every-pixel, every-overview and scalar evidence.
+  It is checkpointed before diagnostics with an explicit incomplete status, then
+  finalized only after reproducibility and input-preservation checks pass.
 - `score_build_report.md` / `.json`: distributions, missing inputs, gates,
   geographic checks, crop-pair Spearman correlations, limiting shares,
   confidence-edge effects and approved class-change sensitivities.
@@ -49,6 +51,13 @@ The first 38 v1 band records, full-resolution float32 bits and per-band provenan
 tags remain unchanged. All appended scores are 0–1, with physical `-9999` nodata.
 Categorical IDs use mode overviews; continuous scores use average overviews.
 Every overview level is regenerated directly from full resolution.
+
+The command budgets 1 GiB for GDAL's decoded-block cache. After every assembly
+pixel is bit-verified against the COG, statistics/diagnostics read its faster
+band-interleaved intermediate. This does not alter the candidate or weaken COG,
+overview or scalar checks. Interrupted steps can be rerun with the same command;
+only previously owned outputs are overwritten, and incomplete evidence is not
+treated as a finished or approved candidate.
 
 Single-cell reports use `config.stack_v2.frozen_engine(manifest)`, so subsequent
 CSV edits cannot silently change the explanation of an old stack. Numerical

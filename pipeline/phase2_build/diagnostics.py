@@ -292,6 +292,12 @@ def geographic_checks(source, engine: ScoringEngine, inside, viability: dict, el
 
 
 def review_diagnostics(source, candidate, manifest: dict, *, references: dict | None = None) -> dict:
+    """Read verified pixels; the builder may pass the bit-identical assembly.
+
+    That optimized path is allowed only after technical acceptance compares all
+    assembly/COG/parent pixels. The diagnostic calculations themselves are the
+    same whether reading the COG or the verified band-interleaved intermediate.
+    """
     engine = stack_v2.frozen_engine(manifest)
     source_indices, indices = stack.band_indices_by_name(source), stack.band_indices_by_name(candidate)
     inside = collect_band(candidate, indices, "ethiopia_mask") == 1

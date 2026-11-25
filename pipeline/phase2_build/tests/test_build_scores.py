@@ -10,7 +10,7 @@ from unittest import mock
 from osgeo import gdal
 
 from config import grid, stack
-from pipeline.phase2_build import build_scores, provenance
+from pipeline.phase2_build import build_scores, diagnostics, provenance
 from pipeline.phase2_build.tests.fixtures import source_fixture, v1_manifest_fixture
 from scoring.tests.fixtures import write_fixture
 
@@ -157,3 +157,27 @@ class CandidateBuildTests(unittest.TestCase):
         report.write_text(report.read_text() + "\n")
         with self.assertRaisesRegex(ValueError, "changed outside"):
             build_scores.validate_only(self.args.work_dir)
+
+    def test_diagnostics_from_verified_assembly_equal_cog_diagnostics(self):
+        report = self.build()
+        manifest = provenance.load_json(self.args.work_dir / "band_manifest.json")
+        source = gdal.OpenEx(str(self.args.source_stack), gdal.OF_RASTER | gdal.OF_READONLY)
+        candidate = gdal.OpenEx(str(self.args.work_dir / "common_stack_v2.tif"), gdal.OF_RASTER | gdal.OF_READONLY)
+        expected = diagnostics.review_diagnostics(source, candidate, manifest, references=provenance.load_json(self.args.v1_validation))
+        self.assertEqual(provenance.json_bytes(report["diagnostics"]), provenance.json_bytes(expected))
+        self.assertEqual(report["technical"]["statistics_read_source"], "bitwise_verified_assembly")
+        source = candidate = None
+
+    def test_interrupted_diagnostics_leave_explicit_incomplete_numerical_evidence(self):
+        with mock.patch.object(diagnostics, "review_diagnostics", side_effect=RuntimeError("Synthetic interruption")):
+            with self.assertRaisesRegex(RuntimeError, "Synthetic interruption"):
+                self.build()
+        checkpoint = provenance.load_json(self.args.work_dir / "technical_validation.json")
+        self.assertEqual(checkpoint["status"], "passed_numerical_checks_pending_build_completion")
+        self.assertEqual(len(checkpoint["pending"]), 3)
+        self.assertEqual(provenance.load_json(self.args.work_dir / "build_state.json")["status"], "building")
+        self.assertFalse((self.args.work_dir / "score_build_report.json").exists())
+        self.assertEqual(self.args.source_manifest.read_bytes(), self.original_manifest)
+        with self.assertRaisesRegex(ValueError, "completed candidate"):
+            build_scores.validate_only(self.args.work_dir)
+        self.assertEqual(self.build()["status"], "awaiting_owner_review")

@@ -32,6 +32,10 @@ from scoring.engine import ScoringEngine  # noqa: E402
 
 gdal.UseExceptions()
 
+# Engineering I/O budget only: retain this grid's multiband decoded COG tiles
+# during full-band acceptance instead of repeatedly evicting/decompressing them.
+GDAL_CACHE_BYTES = 1024 * 1024 * 1024
+
 
 def code_files(root: Path) -> tuple[Path, ...]:
     return tuple(sorted({root / "pipeline/grid.yaml", *(root / "config").glob("*.py"),
@@ -87,6 +91,8 @@ def build_manifest(v1_manifest: dict, engine: ScoringEngine, inputs: dict, *, so
                 "runtime": {"python": platform.python_version(), "gdal": gdal.VersionInfo("RELEASE_NAME"),
                             "numpy": np.__version__, "scipy": scipy.__version__, "zlib": zlib.ZLIB_RUNTIME_VERSION},
                 "build_options": {"window_size": stack.BLOCK_SIZE, "threads": 1,
+                                  "gdal_cache_bytes": GDAL_CACHE_BYTES,
+                                  "diagnostic_read_source": "bitwise_verified_assembly",
                                   "verification_window_size": technical.VERIFY_WINDOW_SIZE,
                                   "random_inside_cells": technical.RANDOM_INSIDE_CELLS, "random_seed": technical.RANDOM_SEED},
                 "assumptions": [
@@ -101,6 +107,7 @@ def build_manifest(v1_manifest: dict, engine: ScoringEngine, inputs: dict, *, so
                     "Water, built-up and unknown land-cover cells have no crop score; current cropland is not a viability filter.",
                     "Logical categorical missing 255 is encoded as physical -9999. Continuous scores are 0-1; all JSON missing values are null.",
                     "Every average/mode overview is generated directly from full-resolution values; full-resolution country mask/nodata is authoritative at mixed overview edges.",
+                    "Statistics and diagnostics read the band-interleaved assembly only after every original/appended full-resolution pixel is verified bitwise against the candidate COG; reported hashes identify that COG.",
                     "Supplied EthioSIS estimates and their 20 km coverage are not regenerated, expanded or shrunk; radius sensitivity is skipped at the owner's request.",
                     "All values describe nominal 1 km advisory estimates, not exact native 90 m samples or agronomic guarantees. Named objects, access bands and Phase 3 remain deferred.",
                     "This is an interim candidate. Numerical acceptance and scientific diagnostic flags do not authorize promotion without owner review of this exact raster/manifest.",
@@ -217,18 +224,27 @@ def build(args) -> dict:
         raw = gdal.OpenEx(str(raw_path), gdal.OF_RASTER | gdal.OF_READONLY)
         note("Checking every full-resolution pixel, original v1 tags, COG structure, every overview and scalar reports.")
         acceptance = technical.validate_package(source, candidate, manifest, v1_manifest, raw=raw)
-        raw = None
         for row in manifest["bands"][len(stack.CORE_BAND_NAMES):]:
             row["statistics"] = acceptance["appended_band_statistics"][row["name"]]
         stack_v2.validate_manifest(manifest, v1_manifest=v1_manifest)
         provenance.write_json(work_dir / "band_manifest.json", manifest)
+        manifest_hash = provenance.sha256(work_dir / "band_manifest.json")
+        acceptance.update({"raster_sha256": manifest["raster_sha256"], "manifest_sha256": manifest_hash})
+        # Keep useful numerical evidence after an interruption, but never label
+        # an incomplete build as accepted or ready for owner review/promotion.
+        provenance.write_json(work_dir / "technical_validation.json", {
+            **acceptance, "status": "passed_numerical_checks_pending_build_completion",
+            "pending": ["scientific diagnostics", "independent reproducibility", "final input-preservation checks"],
+        })
         note(f"Technical acceptance passed: {len(manifest['bands'])} bands; {acceptance['scalar_checks']['compared_cells']} scalar checks; no bitwise mismatches.")
-        note("Computing distributions, geographic comparisons, correlations, edge continuity and approved sensitivity variants.")
-        review = diagnostics.review_diagnostics(source, candidate, manifest, references=references)
+        note("Computing diagnostics and approved sensitivity variants from the bitwise-verified band-interleaved assembly.")
+        # Both its v1 prefix and score bands have been compared to source/COG
+        # above. No source interpolation, scientific formula or values change.
+        review = diagnostics.review_diagnostics(raw, raw, manifest, references=references)
         for name, stats in acceptance["appended_band_statistics"].items():
             if review["band_statistics"][name] != stats:
                 raise ValueError(f"{name}: independent diagnostic statistics changed")
-        candidate = None
+        candidate = raw = None
         note("Rebuilding independently to require byte-identical candidate raster and manifest.")
         repeated = reproducibility_check(source, v1_manifest, manifest, inputs, source_path=args.source_stack,
             archive_path=archive_path, validation_path=args.v1_validation, candidate_path=candidate_path,
@@ -237,8 +253,8 @@ def build(args) -> dict:
         verify_fingerprints(inputs, ROOT, "Phase 2 input preservation")
         if provenance.input_inventory(ROOT) != native_before or provenance.sha256(args.source_manifest) != source_manifest_hash:
             raise ValueError("an original input inventory entry or the shared v1 manifest changed during the build")
-        manifest_hash = provenance.sha256(work_dir / "band_manifest.json")
-        acceptance.update({"raster_sha256": manifest["raster_sha256"], "manifest_sha256": manifest_hash})
+        if provenance.sha256(work_dir / "band_manifest.json") != manifest_hash:
+            raise ValueError("candidate manifest changed during diagnostics/reproducibility")
         report = {"status": "awaiting_owner_review", "stack_version": stack_v2.STACK_VERSION,
                   "raster_file": manifest["raster_file"], "raster_sha256": manifest["raster_sha256"], "manifest_sha256": manifest_hash,
                   "technical": acceptance, "diagnostics": review, "reproducibility": repeated,
@@ -309,7 +325,7 @@ def main() -> None:
         if isinstance(value, Path):
             setattr(args, name, value.resolve())
     gdal.SetConfigOption("GDAL_PAM_ENABLED", "NO")
-    gdal.SetCacheMax(384 * 1024 * 1024)
+    gdal.SetCacheMax(GDAL_CACHE_BYTES)
     try:
         result = validate_only(args.work_dir) if args.validate_only else build(args)
     except (ValueError, OSError, RuntimeError) as exc:

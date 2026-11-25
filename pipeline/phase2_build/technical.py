@@ -131,10 +131,14 @@ def validate_package(source, candidate, manifest: dict, v1_manifest: dict, *, ra
         raise ValueError(f"full COG structural validation failed: {errors}")
     bands, samples = compare_pixels(source, candidate, manifest, raw=raw)
     overviews = verify_overviews(candidate, manifest["bands"], manifest["overview_factors"], raw=raw, parent=source)
+    # compare_pixels has proved every assembly pixel equals the COG. Reading
+    # its band-interleaved data avoids decoding all COG bands for each statistic.
+    statistics_dataset = raw if raw is not None else candidate
+    statistics_indices = stack.band_indices_by_name(statistics_dataset)
     statistics = {}
-    inside = collect_band(candidate, indices, "ethiopia_mask") == 1
+    inside = collect_band(statistics_dataset, statistics_indices, "ethiopia_mask") == 1
     for record in manifest["bands"][len(stack.CORE_BAND_NAMES):]:
-        actual = band_statistics(collect_band(candidate, indices, record["name"]), inside, record)
+        actual = band_statistics(collect_band(statistics_dataset, statistics_indices, record["name"]), inside, record)
         if record.get("statistics") is not None and record["statistics"] != actual:
             raise ValueError(f"{record['name']}: frozen manifest statistics differ from actual values")
         statistics[record["name"]] = actual
@@ -146,4 +150,5 @@ def validate_package(source, candidate, manifest: dict, v1_manifest: dict, *, ra
             "verification_window_size": VERIFY_WINDOW_SIZE, "bands": bands, "overviews": overviews,
             "representative_categories": samples["matched_cells"],
             "scalar_checks": scalar_checks(source, candidate, manifest, samples["representatives"]),
+            "statistics_read_source": "bitwise_verified_assembly" if raw is not None else "candidate_cog",
             "appended_band_statistics": statistics}
